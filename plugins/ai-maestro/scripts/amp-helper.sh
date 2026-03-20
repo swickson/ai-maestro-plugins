@@ -127,6 +127,8 @@ if [ -z "${AMP_DIR:-}" ]; then
         fi
 
         if [ -n "$_amp_agent_name" ]; then
+            # Normalize to lowercase — index keys are always lowercase
+            _amp_agent_name=$(echo "$_amp_agent_name" | tr '[:upper:]' '[:lower:]')
             # Look up UUID from name→UUID index
             _amp_index_file="${AMP_AGENTS_BASE}/.index.json"
             _amp_uuid=""
@@ -1306,28 +1308,32 @@ status_indicator() {
 
 # Try to detect agent name from environment
 detect_agent_name() {
+    local _name=""
+
     # 1. Check CLAUDE_AGENT_NAME env var
     if [ -n "${CLAUDE_AGENT_NAME:-}" ]; then
-        echo "$CLAUDE_AGENT_NAME"
-        return 0
-    fi
-
+        _name="$CLAUDE_AGENT_NAME"
     # 2. Check tmux session name
-    if [ -n "${TMUX:-}" ]; then
+    elif [ -n "${TMUX:-}" ]; then
         local tmux_session
         tmux_session=$(tmux display-message -p '#S' 2>/dev/null)
         if [ -n "$tmux_session" ]; then
             # Remove any _N suffix (multi-session pattern)
-            echo "${tmux_session%_[0-9]*}"
-            return 0
+            _name="${tmux_session%_[0-9]*}"
         fi
     fi
 
-    # 3. Fallback: error out — do NOT use git repo name or hostname
-    #    Using git repo name (e.g. "agents-web") would silently poison
-    #    the agent's config with a wrong identity. Better to fail loudly.
-    echo ""
-    return 1
+    if [ -z "$_name" ]; then
+        # 3. Fallback: error out — do NOT use git repo name or hostname
+        #    Using git repo name (e.g. "agents-web") would silently poison
+        #    the agent's config with a wrong identity. Better to fail loudly.
+        echo ""
+        return 1
+    fi
+
+    # Always normalize to lowercase — agent names are case-insensitive
+    echo "$_name" | tr '[:upper:]' '[:lower:]'
+    return 0
 }
 
 # =============================================================================

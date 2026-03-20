@@ -184,7 +184,7 @@ for provider in "${PROVIDERS[@]}"; do
                 # key is cached (e.g. from a previous registration exchange).
                 # Without the sender's key, we mark it as unverified but still accept.
                 sender_addr=$(echo "$msg" | jq -r '.envelope.from // empty')
-                sender_name="${sender_addr%%@*}"
+                sender_name=$(echo "${sender_addr%%@*}" | tr '[:upper:]' '[:lower:]')
                 # Look up sender UUID from .index.json for key resolution
                 _sender_uuid=""
                 _amp_index="${AMP_AGENTS_BASE}/.index.json"
