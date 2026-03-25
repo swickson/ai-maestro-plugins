@@ -958,16 +958,9 @@ build_address() {
 
 # Generate message ID
 generate_message_id() {
-    # macOS date doesn't support %N (nanoseconds), so use python/perl fallback
+    # AMP spec: msg_<seconds_timestamp>_<hex_random>
     local timestamp
-    if timestamp=$(python3 -c 'import time; print(int(time.time()*1000))' 2>/dev/null); then
-        : # got millisecond timestamp
-    elif timestamp=$(perl -e 'use Time::HiRes qw(time); printf "%d\n", time()*1000' 2>/dev/null); then
-        : # got millisecond timestamp via perl
-    else
-        # Fallback: seconds with random suffix for uniqueness (IMPL-05)
-        timestamp="$(date +%s)000"
-    fi
+    timestamp=$(date +%s)
     local random
     random=$(head -c 4 /dev/urandom | xxd -p)
     echo "msg_${timestamp}_${random}"
