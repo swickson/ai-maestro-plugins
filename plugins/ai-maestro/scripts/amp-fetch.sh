@@ -131,10 +131,10 @@ for provider in "${PROVIDERS[@]}"; do
     EXTERNAL_ADDRESS=$(echo "$REGISTRATION" | jq -r '.address')
 
     # Use explicit fetchUrl from registration if available, otherwise derive from apiUrl
-    # All providers use the same AMP standard: GET /messages/pending
+    # All providers use the same AMP standard: GET /v1/messages/pending
     FETCH_ENDPOINT=$(echo "$REGISTRATION" | jq -r '.fetchUrl // empty')
     if [ -z "$FETCH_ENDPOINT" ]; then
-        FETCH_ENDPOINT="${API_URL}/messages/pending"
+        FETCH_ENDPOINT="${API_URL}/v1/messages/pending"
     fi
 
     if [ "$VERBOSE" = true ]; then
@@ -298,10 +298,10 @@ for provider in "${PROVIDERS[@]}"; do
 
             TOTAL_NEW=$((TOTAL_NEW + 1))
 
-            # Acknowledge receipt on provider (AMP standard: DELETE /messages/pending/:id)
+            # Acknowledge receipt on provider (AMP standard: DELETE /v1/messages/pending/:id)
             if [ "$MARK_AS_FETCHED" = true ]; then
                 # msg_id is validated to [a-zA-Z0-9_-] so safe in path segment
-                curl -s --connect-timeout 3 -X DELETE "${API_URL}/messages/pending/${msg_id}" \
+                curl -s --connect-timeout 3 -X DELETE "${API_URL}/v1/messages/pending/${msg_id}" \
                     -H "Authorization: Bearer ${API_KEY}" \
                     >/dev/null 2>&1 || true
             fi
