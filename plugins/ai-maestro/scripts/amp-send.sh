@@ -475,7 +475,7 @@ if [ "$ROUTE" = "local" ]; then
             RECIPIENT_AMP_DIR="${AGENTS_BASE_DIR}/${ADDR_NAME}"
         fi
 
-        if [ -d "${RECIPIENT_AMP_DIR}" ]; then
+        if [ -d "${RECIPIENT_AMP_DIR}" ] && [ -f "${RECIPIENT_AMP_DIR}/config.json" ]; then
             # Recipient IS on this machine — deliver directly via filesystem
             save_to_sent "$MESSAGE_JSON" >/dev/null
             MSG_ID=$(echo "$MESSAGE_JSON" | jq -r '.envelope.id')
@@ -628,7 +628,7 @@ if [ "$ROUTE" = "local" ]; then
                 RECIPIENT_AMP_DIR="${AGENTS_BASE_DIR}/${ADDR_NAME}"
             fi
 
-            if [ -d "${RECIPIENT_AMP_DIR}" ]; then
+            if [ -d "${RECIPIENT_AMP_DIR}" ] && [ -f "${RECIPIENT_AMP_DIR}/config.json" ]; then
                 # Recipient IS on this machine - filesystem delivery is valid
                 save_to_sent "$MESSAGE_JSON" >/dev/null
                 MSG_ID=$(echo "$MESSAGE_JSON" | jq -r '.envelope.id')
