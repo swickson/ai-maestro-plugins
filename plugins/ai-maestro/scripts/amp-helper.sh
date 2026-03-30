@@ -162,6 +162,34 @@ if [ -z "${AMP_DIR:-}" ]; then
     if [ "$_amp_resolved" = false ]; then
         _amp_index_file="${AMP_AGENTS_BASE}/.index.json"
         if [ -f "$_amp_index_file" ]; then
+# ── Cross-check AMP_DIR against .index.json ──
+# If AMP_DIR was set via env var (e.g. from amp-init --auto), it may point to
+# a stale UUID that was later cleaned up or replaced. Validate against the
+# canonical name→UUID index and correct if they disagree.
+_amp_index_file="${AMP_AGENTS_BASE}/.index.json"
+if [ -f "$_amp_index_file" ]; then
+    # Determine agent name: env var > config.json in AMP_DIR > tmux session
+    _amp_check_name="${CLAUDE_AGENT_NAME:-}"
+    if [ -z "$_amp_check_name" ] && [ -f "${AMP_DIR}/config.json" ]; then
+        _amp_check_name=$(jq -r '.agent.name // empty' "${AMP_DIR}/config.json" 2>/dev/null)
+    fi
+    if [ -z "$_amp_check_name" ] && [ -n "${TMUX:-}" ]; then
+        _amp_check_name=$(tmux display-message -p '#S' 2>/dev/null || true)
+        _amp_check_name="${_amp_check_name%_[0-9]*}"
+    fi
+
+    if [ -n "$_amp_check_name" ]; then
+        _amp_indexed_uuid=$(jq -r --arg name "$_amp_check_name" '.[$name] // empty' "$_amp_index_file" 2>/dev/null)
+        _amp_current_uuid=$(basename "$AMP_DIR")
+        if [ -n "$_amp_indexed_uuid" ] && [ "$_amp_indexed_uuid" != "$_amp_current_uuid" ]; then
+            echo "  Warning: AMP_DIR points to ${_amp_current_uuid} but .index.json says ${_amp_check_name} -> ${_amp_indexed_uuid}" >&2
+            echo "  Correcting AMP_DIR to use indexed UUID." >&2
+            AMP_DIR="${AMP_AGENTS_BASE}/${_amp_indexed_uuid}"
+        fi
+    fi
+    unset _amp_check_name _amp_indexed_uuid _amp_current_uuid
+fi
+
             _amp_count=$(jq 'length' "$_amp_index_file" 2>/dev/null || echo "0")
             if [ "$_amp_count" = "1" ]; then
                 _amp_uuid=$(jq -r 'to_entries[0].value' "$_amp_index_file" 2>/dev/null)
@@ -793,7 +821,7 @@ generate_uuid() {
         uuidgen | tr '[:upper:]' '[:lower:]'
     else
         # Fallback: generate from /dev/urandom (works on any POSIX system)
-        od -x /dev/urandom | head -1 | awk '{print $2$3"-"$4"-4"substr($5,2)"-"substr($6,1,1)"a"substr($6,2)"-"$7$8$9}'
+        od -x /dev/urandom | head -1 | awk '{print $2$3"-"$4"-4"substr($5,2)"-"substr($6,1,1)"a"substr($6,3)"-"$7$8$9}'
     fi
 }
 

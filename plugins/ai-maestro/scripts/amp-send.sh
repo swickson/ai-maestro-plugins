@@ -32,6 +32,32 @@ unset _amp_prev _amp_arg
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/amp-helper.sh"
 
+# Send push notification for local filesystem deliveries
+# Calls the AI Maestro server's notification endpoint so the server handles
+# tmux notification delivery (same path as routed messages)
+_notify_local_recipient() {
+    local recipient_name="$1"
+    local sender_addr="$2"
+    local subject="$3"
+    local priority="${4:-normal}"
+    local msg_type="${5:-notification}"
+    local msg_id="${6:-local-delivery}"
+
+    # Try to notify via the local AI Maestro server (port 23000)
+    # This uses the same notification pipeline as routed messages
+    curl -s -X POST "http://localhost:23000/api/agents/notify" \
+        -H "Content-Type: application/json" \
+        -d "$(jq -n \
+            --arg name "$recipient_name" \
+            --arg from "$sender_addr" \
+            --arg subject "$subject" \
+            --arg priority "$priority" \
+            --arg type "$msg_type" \
+            --arg mid "$msg_id" \
+            '{agentName: $name, fromName: $from, subject: $subject, priority: $priority, messageType: $type, messageId: $mid}')" \
+        >/dev/null 2>&1 || true
+}
+
 # Parse arguments
 RECIPIENT=""
 SUBJECT=""
@@ -498,6 +524,9 @@ if [ "$ROUTE" = "local" ]; then
 
             echo "$DELIVERY_MSG" > "${RECIPIENT_INBOX}/${SENDER_DIR}/${MSG_ID}.json"
 
+            # Push notification to recipient's tmux session
+            _notify_local_recipient "$ADDR_NAME" "$FROM_ADDR" "$SUBJECT" "$PRIORITY" "$TYPE" "$MSG_ID"
+
             echo "✅ Message sent (local filesystem delivery)"
             echo ""
             echo "  To:       ${FULL_RECIPIENT}"
@@ -650,6 +679,9 @@ if [ "$ROUTE" = "local" ]; then
                 fi
 
                 echo "$DELIVERY_MSG" > "${RECIPIENT_INBOX}/${SENDER_DIR}/${MSG_ID}.json"
+
+                # Push notification to recipient's tmux session
+                _notify_local_recipient "$ADDR_NAME" "$FROM_ADDR" "$SUBJECT" "$PRIORITY" "$TYPE" "$MSG_ID"
 
                 echo "✅ Message sent (local filesystem delivery)"
                 echo ""
