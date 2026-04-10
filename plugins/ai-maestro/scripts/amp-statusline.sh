@@ -94,6 +94,14 @@ esac
 # Status line output (called by Claude Code via stdin JSON)
 # =============================================================================
 
+# Ensure Homebrew binaries (tmux, jq) are on PATH
+for _brew_prefix in /opt/homebrew/bin /usr/local/bin; do
+    case ":$PATH:" in
+        *":$_brew_prefix:"*) ;;
+        *) [ -d "$_brew_prefix" ] && PATH="$_brew_prefix:$PATH" ;;
+    esac
+done
+
 input=$(cat)
 
 # Extract Claude Code session data
