@@ -94,27 +94,39 @@ if [ "$MODE" = "commands" ]; then
 # AMP Command Cheatsheet
 
 ## Send a direct message
-amp-send <recipient> "<subject>" "<body>" <priority> <type>
+amp-send <recipient> <subject> <message> [options]
 
   recipient: agent name or AMP address (e.g., "optic" or "optic@tenant.provider")
-  priority:  low | normal | urgent
-  type:      notification | request | response | broadcast
+  options:
+    --priority, -p   low | normal | high | urgent   (default: normal)
+    --type, -t       request | response | notification | task | status   (default: notification)
+    --reply-to, -r   ID this message is replying to
 
-  Example:
-    amp-send mason "Wireframe review" "Please check the dashboard touch targets" normal request
+  Examples:
+    amp-send mason "Wireframe review" "Please check the dashboard touch targets"
+    amp-send mason "Wireframe review" "Please check targets" --priority high --type request
 
 ## Check your inbox
-amp-inbox                    # List unread messages
-amp-inbox --all              # List all messages
+amp-inbox                    # Show unread messages (default)
+amp-inbox --all              # Show all messages
+amp-inbox --unread           # Show only unread (explicit)
+amp-inbox --read             # Show only read
+amp-inbox --count            # Just show the count
+amp-inbox --limit 20         # Cap results to the most recent N
 amp-inbox --json             # Machine-readable output
 
 ## Read a specific message
-amp-read <message-id>        # Print full message content
-amp-read <message-id> --mark-read
+amp-read <message-id>                # Print message and mark it read (default)
+amp-read <message-id> --no-mark-read # Read without marking it read
+amp-read <message-id> --json         # Raw JSON output
+amp-read <message-id> --sent         # Read from sent folder instead of inbox
 
 ## Reply to a message
-amp-reply <message-id> "<body>"
-amp-reply <message-id> "<body>" --priority urgent
+amp-reply <message-id> <reply-message>
+amp-reply <message-id> <reply-message> --priority high
+
+## Delete a message
+amp-delete <message-id>
 
 ## Identity and status
 amp-identity                 # Print your agent identity
@@ -129,6 +141,7 @@ amp-primer                   # Full protocol reference
 amp-primer --short           # One-paragraph reminder
 amp-primer --commands        # This cheatsheet
 amp-primer --peers           # List peer agents
+<command> --help             # Every amp-* command supports --help
 EOF
     exit 0
 fi
@@ -168,13 +181,35 @@ if [ "$MODE" = "peers" ]; then
     echo "# Peer agents (from $FOUND)"
     echo ""
     if command -v jq >/dev/null 2>&1; then
-        # Try object-of-name-to-uuid format first (amp-messaging index)
-        if jq -e 'type == "object"' "$FOUND" >/dev/null 2>&1; then
-            jq -r 'to_entries[] | "\(.key)\t\(.value)"' "$FOUND"
-        else
-            # Fall back to array of agent objects
-            jq -r '.[] | "\(.name // .id)\t\(.address // .id)"' "$FOUND" 2>/dev/null || cat "$FOUND"
-        fi
+        # Print header
+        printf 'NAME\tLABEL\tADDRESS\tHOST\n'
+        # The agent-directory.json format is {version, lastSync, entries: {<name>: {...}}}
+        # Fall back to treating the top-level as the entries dict if no wrapper key.
+        # For arrays, iterate directly.
+        jq -r '
+          (if type == "object" and has("entries") then .entries
+           elif type == "object" then .
+           else . end)
+          | if type == "object" then
+              to_entries[]
+              | [
+                  .key,
+                  (.value.label // .value.name // ""),
+                  (.value.ampAddress // .value.address // .value // ""),
+                  (.value.hostId // .value.host // "")
+                ]
+              | @tsv
+            else
+              .[]
+              | [
+                  (.name // .id // ""),
+                  (.label // ""),
+                  (.ampAddress // .address // ""),
+                  (.hostId // .host // "")
+                ]
+              | @tsv
+            end
+        ' "$FOUND" 2>/dev/null || cat "$FOUND"
     else
         cat "$FOUND"
     fi
@@ -231,32 +266,43 @@ like GEMINI.md or CLAUDE.md — check the file you're currently working in.
 ## Sending a Message
 
 Basic form:
-    amp-send <recipient> "<subject>" "<body>" <priority> <type>
+    amp-send <recipient> <subject> <message> [options]
 
-  recipient: an agent name (e.g., "mason") or full AMP address
-             (e.g., "mason@n4-corp.aimaestro.local")
-  priority:  low | normal | urgent
-  type:      notification | request | response | broadcast
+  recipient:     an agent name (e.g., "mason") or full AMP address
+                 (e.g., "mason@n4-corp.aimaestro.local")
+  --priority, -p low | normal | high | urgent   (default: normal)
+  --type, -t     request | response | notification | task | status
+                 (default: notification)
+  --reply-to, -r <message-id>  Mark as a reply to the given message
 
 Example — Optic (design) asking Mason (engineering) for a clarification:
     amp-send mason "Touch target sizing" \
       "For the on-duty dashboard mobile view, can you confirm whether \
        touch targets should be 44px or 48px given our accessibility \
        constraints?" \
-      normal request
+      --priority normal --type request
 
 ## Receiving Messages
 
 Check your inbox:
-    amp-inbox              # unread only
+    amp-inbox              # unread only (default)
     amp-inbox --all        # everything
+    amp-inbox --count      # just the count
+    amp-inbox --limit 20   # cap to the most recent N
+    amp-inbox --json       # machine-readable
 
-Read a specific message:
+Read a specific message (marks it read by default):
     amp-read <message-id>
-    amp-read <message-id> --mark-read
+    amp-read <message-id> --no-mark-read    # read without marking
+    amp-read <message-id> --json            # raw JSON
+    amp-read <message-id> --sent            # from sent folder
 
 Reply:
-    amp-reply <message-id> "<body>"
+    amp-reply <message-id> <reply-message>
+    amp-reply <message-id> <reply-message> --priority high
+
+Delete:
+    amp-delete <message-id>
 
 ## Meetings
 
@@ -274,15 +320,17 @@ messages should start with @all or an explicit @-mention of a participant.
 
 ## Message Types
 
-- notification: one-way, no response expected (status updates, alerts)
+- notification: one-way, no response expected (status updates, alerts). Default.
 - request:      action or information expected in reply
 - response:     reply to an earlier request
-- broadcast:    announcement to multiple agents (rare in 1:1 flows)
+- task:         work assignment — explicit ask to do something
+- status:       status report or state update (progress, blockers, completion)
 
 ## Priority
 
 - low:     background, no time pressure
 - normal:  default, handle in reasonable order
+- high:    elevated attention, handle before normal work
 - urgent:  time-sensitive, handle before other work
 
 Use urgent sparingly. Overusing it erodes its signal value.
