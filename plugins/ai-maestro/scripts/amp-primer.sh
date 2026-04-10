@@ -186,6 +186,11 @@ if [ "$MODE" = "peers" ]; then
         # The agent-directory.json format is {version, lastSync, entries: {<name>: {...}}}
         # Fall back to treating the top-level as the entries dict if no wrapper key.
         # For arrays, iterate directly.
+        #
+        # Note: do NOT use `.value` as a fallback in the address chain —
+        # for peers without an ampAddress/address field, that resolves to
+        # the entire nested object and @tsv errors trying to serialize it.
+        # Use a literal "(unregistered)" marker instead.
         jq -r '
           (if type == "object" and has("entries") then .entries
            elif type == "object" then .
@@ -195,7 +200,7 @@ if [ "$MODE" = "peers" ]; then
               | [
                   .key,
                   (.value.label // .value.name // ""),
-                  (.value.ampAddress // .value.address // .value // ""),
+                  (.value.ampAddress // .value.address // "(unregistered)"),
                   (.value.hostId // .value.host // "")
                 ]
               | @tsv
@@ -204,14 +209,20 @@ if [ "$MODE" = "peers" ]; then
               | [
                   (.name // .id // ""),
                   (.label // ""),
-                  (.ampAddress // .address // ""),
+                  (.ampAddress // .address // "(unregistered)"),
                   (.hostId // .host // "")
                 ]
               | @tsv
             end
-        ' "$FOUND" 2>/dev/null || cat "$FOUND"
+        ' "$FOUND" || {
+            echo "amp-primer: failed to parse peer directory at $FOUND" >&2
+            echo "amp-primer: file format may be unrecognized — try: cat $FOUND" >&2
+            exit 1
+        }
     else
-        cat "$FOUND"
+        echo "amp-primer: jq not found — cannot parse peer directory" >&2
+        echo "amp-primer: install jq, or view the raw file at: $FOUND" >&2
+        exit 1
     fi
     exit 0
 fi
