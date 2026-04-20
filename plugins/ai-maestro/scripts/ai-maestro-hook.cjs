@@ -184,6 +184,52 @@ async function checkUnreadMessagesStandalone() {
     }
 }
 
+// Drain any queued meeting messages for the agent bound to this cwd.
+// Returns a formatted context string (joined by blank lines) or null if empty.
+// Uses the session name as the queue key — matches how the meeting server
+// keys injections. See lib/meeting-inject-queue.ts.
+async function drainMeetingInjectQueue(cwd) {
+    try {
+        const agentsResponse = await fetch('http://localhost:23000/api/agents');
+        if (!agentsResponse.ok) return null;
+
+        const agentsData = await agentsResponse.json();
+        const agent = (agentsData.agents || []).find(a => {
+            const agentWd = a.workingDirectory || a.session?.workingDirectory;
+            if (!agentWd) return false;
+            if (agentWd === cwd) return true;
+            if (cwd.startsWith(agentWd + '/')) return true;
+            if (agentWd.startsWith(cwd + '/')) return true;
+            return false;
+        });
+        if (!agent) return null;
+
+        const sessionName = agent.name || agent.alias || agent.session?.tmuxSessionName;
+        if (!sessionName) return null;
+
+        const drainResponse = await fetch(
+            `http://localhost:23000/api/meetings/inject-queue?session=${encodeURIComponent(sessionName)}`
+        );
+        if (!drainResponse.ok) return null;
+
+        const data = await drainResponse.json();
+        const messages = data.messages || [];
+        if (messages.length === 0) return null;
+
+        debugLog({ event: 'meeting_queue_drained', sessionName, count: messages.length });
+        return messages.map(m => m.text).join('\n\n');
+    } catch (err) {
+        debugLog({ event: 'meeting_queue_drain_error', error: err.message });
+        return null;
+    }
+}
+
+// Merge two optional context strings (either or both may be null)
+function mergeContexts(...parts) {
+    const joined = parts.filter(Boolean).join('\n\n');
+    return joined || null;
+}
+
 // Check for unread messages for this agent
 async function checkUnreadMessages(cwd) {
     try {
@@ -362,11 +408,15 @@ async function main() {
                     transcriptPath
                 });
 
-                // Check for unread messages and inject as context
-                const idleMessagePrompt = await checkUnreadMessages(cwd);
-                if (idleMessagePrompt) {
-                    debugLog({ event: 'injecting_inbox_context', cwd, agent, trigger: 'idle_prompt' });
-                    hookResponse = buildContextResponse(agent, rawEvent, idleMessagePrompt);
+                // Drain inbox notifications + queued meeting messages; merge into one context.
+                const [idleInbox, idleMeeting] = await Promise.all([
+                    checkUnreadMessages(cwd),
+                    drainMeetingInjectQueue(cwd)
+                ]);
+                const idleContext = mergeContexts(idleMeeting, idleInbox);
+                if (idleContext) {
+                    debugLog({ event: 'injecting_context', cwd, agent, trigger: 'idle_prompt', hasInbox: !!idleInbox, hasMeeting: !!idleMeeting });
+                    hookResponse = buildContextResponse(agent, rawEvent, idleContext);
                 }
             } else if (notificationType === 'permission_prompt') {
                 // For permission prompts, preserve existing tool info if we have it
@@ -422,11 +472,15 @@ async function main() {
                 source: input.source
             });
 
-            // Check for unread messages and inject as context
-            const startMessagePrompt = await checkUnreadMessages(cwd);
-            if (startMessagePrompt) {
-                debugLog({ event: 'injecting_inbox_context', cwd, agent, trigger: 'session_start' });
-                hookResponse = buildContextResponse(agent, rawEvent, startMessagePrompt);
+            // Drain inbox notifications + queued meeting messages; merge into one context.
+            const [startInbox, startMeeting] = await Promise.all([
+                checkUnreadMessages(cwd),
+                drainMeetingInjectQueue(cwd)
+            ]);
+            const startContext = mergeContexts(startMeeting, startInbox);
+            if (startContext) {
+                debugLog({ event: 'injecting_context', cwd, agent, trigger: 'session_start', hasInbox: !!startInbox, hasMeeting: !!startMeeting });
+                hookResponse = buildContextResponse(agent, rawEvent, startContext);
             }
             break;
 
