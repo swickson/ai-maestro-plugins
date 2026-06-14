@@ -1243,28 +1243,44 @@ find_message_file() {
         return 1
     fi
 
-    # Check flat structure first (backward compatibility)
+    # Check flat structure first (backward compatibility — single canonical
+    # legacy location, takes precedence over nested as before).
     local flat_file="${base_dir}/${message_id}.json"
     if [ -f "$flat_file" ]; then
         echo "$flat_file"
         return 0
     fi
 
-    # Search in subdirectories (protocol-compliant structure)
+    # Search nested sender subdirectories (protocol-compliant structure).
+    # Collect ALL matches instead of returning the first: if a message ID
+    # resolves to more than one sender folder (an ID collision), returning the
+    # alphabetically-first match would SILENTLY display/read/delete the wrong
+    # sender's message. Fail loud instead so the collision is visible rather
+    # than mis-attributed. (kanban 4bee9be0)
+    local matches=()
     shopt -s nullglob
     for subdir in "${base_dir}"/*/; do
-        if [ -d "$subdir" ]; then
-            local nested_file="${subdir}${message_id}.json"
-            if [ -f "$nested_file" ]; then
-                shopt -u nullglob
-                echo "$nested_file"
-                return 0
-            fi
-        fi
+        [ -d "$subdir" ] || continue
+        local nested_file="${subdir}${message_id}.json"
+        [ -f "$nested_file" ] && matches+=("$nested_file")
     done
     shopt -u nullglob
 
-    return 1
+    if [ ${#matches[@]} -eq 0 ]; then
+        return 1
+    fi
+
+    if [ ${#matches[@]} -gt 1 ]; then
+        echo "Error: message ID ${message_id} is ambiguous — resolves to ${#matches[@]} files, refusing to guess:" >&2
+        local m
+        for m in "${matches[@]}"; do
+            echo "  - ${m}" >&2
+        done
+        return 2
+    fi
+
+    echo "${matches[0]}"
+    return 0
 }
 
 # Read a specific message
