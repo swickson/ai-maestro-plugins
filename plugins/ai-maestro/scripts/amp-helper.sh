@@ -1510,6 +1510,16 @@ compute_file_digest() {
     echo "sha256:${hash}"
 }
 
+# Normalize a digest for comparison: tolerate an optional "sha256:" algorithm
+# prefix and case differences. compute_file_digest() emits the spec "sha256:<hex>"
+# form, but gateway-originated attachments (and some Maestro /status responses)
+# carry a BARE hex digest. Comparing the two literally false-positives as
+# tampering and deletes the file. Strip the prefix and lowercase before compare.
+normalize_digest() {
+    local d="${1#sha256:}"
+    printf '%s' "$d" | tr 'A-Z' 'a-z'
+}
+
 # Sanitize filename for safe storage
 sanitize_filename() {
     local filename="$1"
@@ -1863,7 +1873,7 @@ download_attachment() {
         # Verify digest
         local actual_digest
         actual_digest=$(compute_file_digest "$dest_path")
-        if [ "$actual_digest" != "$expected_digest" ]; then
+        if [ "$(normalize_digest "$actual_digest")" != "$(normalize_digest "$expected_digest")" ]; then
             rm -f "$dest_path"
             echo "Error: Digest mismatch! Expected ${expected_digest}, got ${actual_digest}" >&2
             echo "  The file may have been tampered with." >&2
@@ -1922,7 +1932,7 @@ download_attachment() {
     # Verify digest (mandatory)
     local actual_digest
     actual_digest=$(compute_file_digest "$dest_path")
-    if [ "$actual_digest" != "$expected_digest" ]; then
+    if [ "$(normalize_digest "$actual_digest")" != "$(normalize_digest "$expected_digest")" ]; then
         rm -f "$dest_path"
         echo "Error: Digest mismatch! Expected ${expected_digest}, got ${actual_digest}" >&2
         echo "  The file may have been tampered with." >&2
