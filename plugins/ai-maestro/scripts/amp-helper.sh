@@ -1514,10 +1514,12 @@ compute_file_digest() {
 # prefix and case differences. compute_file_digest() emits the spec "sha256:<hex>"
 # form, but gateway-originated attachments (and some Maestro /status responses)
 # carry a BARE hex digest. Comparing the two literally false-positives as
-# tampering and deletes the file. Strip the prefix and lowercase before compare.
+# tampering and deletes the file. Lowercase first, then strip the prefix — so an
+# uppercase "SHA256:" is handled symmetrically too.
 normalize_digest() {
-    local d="${1#sha256:}"
-    printf '%s' "$d" | tr 'A-Z' 'a-z'
+    local d
+    d=$(printf '%s' "$1" | tr 'A-Z' 'a-z')
+    printf '%s' "${d#sha256:}"
 }
 
 # Sanitize filename for safe storage
