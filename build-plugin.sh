@@ -202,6 +202,44 @@ for i in $(seq 0 $((SOURCE_COUNT - 1))); do
     echo ""
 done
 
+# ── Apply ai-maestro overlays (post-fetch) ──────────────────────────────────
+# Inject ai-maestro-specific additions into upstream-sourced scripts AFTER the
+# source merge, so they survive `--clean` (which re-fetches + overwrites upstream).
+# The upstream file stays the source of truth; only the marked block is added.
+# Fail-loud if an anchor is missing (upstream drifted) rather than silently
+# dropping the addition.
+if [ "$DRY_RUN" = false ]; then
+    echo -e "${CYAN}Applying ai-maestro overlays...${NC}"
+
+    # amp-read.sh: render Card B `enrichment.memoryRecall` (agent-harness recall).
+    # amp-read.sh is upstream (amp-messaging); a plain edit to the built file is
+    # wiped on --clean, so the render is injected here instead.
+    AR_OUT="$OUTPUT_DIR/scripts/amp-read.sh"
+    AR_SNIPPET="$SCRIPT_DIR/overlays/scripts/amp-read.enrichment-render.snippet"
+    if [ -f "$AR_OUT" ] && [ -f "$AR_SNIPPET" ]; then
+        if grep -q "MEMORY RECALL" "$AR_OUT"; then
+            echo -e "  ${GREEN}amp-read.sh: enrichment render already present${NC}"
+        elif grep -qF '# Show attachments if present' "$AR_OUT"; then
+            # Insert the render block right before the attachments section (i.e.
+            # immediately after the body), matching the §6 render position.
+            awk -v snip="$AR_SNIPPET" '
+              /^# Show attachments if present/ && !injected {
+                while ((getline line < snip) > 0) print line
+                close(snip)
+                injected = 1
+              }
+              { print }
+            ' "$AR_OUT" > "$AR_OUT.tmp" && mv "$AR_OUT.tmp" "$AR_OUT"
+            chmod +x "$AR_OUT"
+            echo -e "  ${GREEN}amp-read.sh: injected enrichment render overlay${NC}"
+        else
+            echo -e "${RED}  Error: amp-read.sh overlay anchor '# Show attachments if present' not found.${NC}" >&2
+            echo -e "${RED}  Upstream amp-read.sh changed — the Card B enrichment-render overlay needs updating.${NC}" >&2
+            exit 1
+        fi
+    fi
+fi
+
 # Generate README for the built plugin
 if [ "$DRY_RUN" = false ]; then
     SKILL_COUNT=$(find "$OUTPUT_DIR/skills" -name "SKILL.md" 2>/dev/null | wc -l | tr -d ' ')
