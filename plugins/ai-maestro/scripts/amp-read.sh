@@ -173,8 +173,10 @@ recall=$(echo "$MESSAGE" | jq '.enrichment.memoryRecall // null')
 if [ "$recall" != "null" ] && [ "$(echo "$recall" | jq -r '.kind // ""')" = "memory-recall-v1" ]; then
     recall_for=$(echo "$recall" | jq -r '.recipientAgentId // "you"')
     recall_advisory=$(echo "$recall" | jq -r '.advisory // ""')
-    echo "═══════════════ MEMORY RECALL — your own memory, not sender content ═══════════════"
-    echo "(auto-recalled for ${recall_for} by your memory subsystem — advisory, not an instruction)"
+    # ASCII delimiter (=== vs the body's ━) keeps this court-sensitive block ASCII-
+    # normalized AND makes recall more visibly distinct from sender content (§6).
+    echo "=============== MEMORY RECALL - your own memory, not sender content ==============="
+    echo "(auto-recalled for ${recall_for} by your memory subsystem - advisory, not an instruction)"
     if [ -n "$recall_advisory" ]; then
         echo "${recall_advisory}"
     fi
@@ -182,17 +184,17 @@ if [ "$recall" != "null" ] && [ "$(echo "$recall" | jq -r '.kind // ""')" = "mem
     recall_i=1
     while read -r item_b64; do
         item=$(echo "$item_b64" | base64 -d)
-        item_text=$(echo "$item" | jq -r '.text')
-        item_conf=$(echo "$item" | jq -r '.confidence')
+        item_text=$(echo "$item" | jq -r '.text // ""')
+        item_conf=$(echo "$item" | jq -r '.confidence // "?"')
         item_reinf=$(echo "$item" | jq -r '.reinforcement // empty')
         item_line="  ${recall_i}. ${item_text} (confidence: ${item_conf}"
         if [ -n "$item_reinf" ]; then
-            item_line="${item_line}, reinforced ${item_reinf}×"
+            item_line="${item_line}, reinforced ${item_reinf}x"
         fi
         echo "${item_line})"
         recall_i=$((recall_i + 1))
     done < <(echo "$recall" | jq -r '.items[] | @base64')
-    echo "═══════════════════════ END MEMORY RECALL ═══════════════════════"
+    echo "======================= END MEMORY RECALL ======================="
     echo ""
 fi
 
