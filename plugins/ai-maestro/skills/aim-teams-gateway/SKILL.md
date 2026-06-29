@@ -8,7 +8,7 @@ metadata:
   version: 1.0.0
   content-owner: Bishop (swickson/aimaestro-gateways · teams-gateway)
   packaging: KAI
-  tracks: gateway contract w4 (#15/#16/#20) + w5 (#21/#22)
+  tracks: gateway contract w4 (#15/#16/#20) + w5 (#21/#22) + multi-bot proactive-DM routing (#34)
 ---
 # aim-teams-gateway
 
@@ -16,7 +16,7 @@ You operate a **Microsoft Teams bot through the AI Maestro Teams gateway**. You 
 
 ## 1. Model & addressing
 
-- Each agent backs exactly **one Teams bot** (one bot = one Azure app reg + one AMP identity). Your bot endpoint is `teams-<slug>-bot@n4x-corp.aimaestro.local` (e.g. `teams-kai-bot@…`, `teams-leoai-bot@…`).
+- Each agent backs exactly **one Teams bot** (one bot = one Azure app reg + one AMP identity). Your bot endpoint is `teams-<slug>-bot@<org>.aimaestro.local` (e.g. `teams-kai-bot@…`, `teams-leoai-bot@…`).
 - **Inbound:** a user DMs or @mentions your bot in Teams → the gateway routes it to **your** Maestro inbox as an AMP message with an enriched envelope.
 - **Outbound:** you reply via AMP **to your bot endpoint** → the gateway's outbound poller delivers it to the right Teams conversation.
 - You do **not** need (or get) direct Teams/Graph API access. Everything is AMP.
@@ -46,7 +46,7 @@ To send a **status summary card** instead of plain text, use **`amp-send`** (not
 
 ```
 amp-send teams-<slug>-bot "<subject>" \
-  '{"title":"Deploy complete","status":"success","description":"v0.31 live","facts":[{"title":"Host","value":"holmes"},{"title":"Health","value":"200"}]}' \
+  '{"title":"Deploy complete","status":"success","description":"v0.31 live","facts":[{"title":"Host","value":"host-a"},{"title":"Health","value":"200"}]}' \
   --reply-to <inbound-msg-id> \
   --context '{"render":"status_summary"}'
 ```
@@ -70,6 +70,7 @@ To DM a user without an inbound to reply to, trigger it through Maestro (preferr
 - **v1 captures on first contact:** you can only proactively DM a user who has messaged your bot at least once.
 - **Cold-start** (`createConversation` for a never-DM'd-but-directory-known user) exists but is **flag-gated and off by default**; truly-unknown users are out of scope.
 - Proactive DMs are **text-only** today (no cards/attachments on the proactive path).
+- **Multi-bot deployments:** when several bots share one gateway and the target user has talked to **more than one** of them, a proactive DM that doesn't pin a bot fails with `409 ambiguous_bot` (the response lists the `candidates`). Maestro pins the bot from the user's stored `botSlug` — make sure the notify resolves to **your** bot, so the DM is sent as the right identity. If the user has only ever spoken to one bot, that bot is selected automatically.
 
 ## 7. Channels & group chats
 
