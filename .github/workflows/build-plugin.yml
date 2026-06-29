@@ -35,6 +35,17 @@ jobs:
           echo "=== Plugin manifest ==="
           cat plugins/ai-maestro/.claude-plugin/plugin.json
 
+      - name: Scan generated output for leaks
+        env:
+          LEAK_DENYLIST: ${{ secrets.LEAK_DENYLIST }}
+        run: |
+          # Stage the freshly-built output so leak-scan (git ls-files based)
+          # sees new/modified generated files, then HARD-fail before any commit
+          # — the build-bot commits with [skip ci], so this is the only gate
+          # on generated content reaching this PUBLIC repo.
+          git add plugins/
+          bash scripts/leak-scan.sh
+
       - name: Commit build output
         run: |
           git config user.name "github-actions[bot]"
